@@ -1,0 +1,269 @@
+name: Generate lockfile
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - "release/**"
+      - "develop"
+
+permissions:
+  contents: write   # needed if the workflow will commit/push changes
+  pull-requests: write
+
+jobs:
+  generate-lock:
+    name: Generate lockfile with strict umask and disable inheritance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install pip-tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-tools
+        shell: bash
+
+      - name: Ensure no inherited ACLs on project dir (remove default ACLs if present)
+        run: |
+          if command -v setfacl >/dev/null 2>&1; then
+            # Remove default ACL entries for current dir to avoid inheritance
+            setfacl -k . || true
+            setfacl -b . || true
+          fi
+        shell: bash
+
+      - name: Generate weather-server-python/uv.lock with pip-compile and strict umask
+        run: |
+          # Ensure files created are owner-only by default (files: 600, dirs: 700)
+          umask 077
+
+          if [ -f requirements.in ]; then
+            echo "Found requirements.in — running pip-compile to output weather-server-python/uv.lock"
+            pip-compile requirements.in --generate-hashes -o weather-server-python/uv.lock
+          else
+            echo "requirements.in not found; skipping pip-compile"
+          fi
+
+          # If uv.lock exists, tighten permissions and remove ACLs if possible
+          if [ -f weather-server-python/uv.lock ]; then
+            chmod 600 weather-server-python/uv.lock || true
+            if command -v setfacl >/dev/null 2>&1; then
+              setfacl -k weather-server-python/uv.lock || true
+              setfacl -b weather-server-python/uv.lock || true
+            fi
+          fi
+        shell: bash
+
+      - name: Windows: disable inheritance on uv.lock if present
+        if: runner.os == 'Windows'
+        run: |
+          $file = Join-Path $Env:GITHUB_WORKSPACE 'weather-server-python\uv.lock'
+          if (Test-Path $file) {
+            Write-Host "Disabling inheritance on $file"
+            icacls $file /inheritance:r
+            icacls $file /grant:r "$($env:USERNAME):(R,W)" /c
+          } else {
+            Write-Host "No uv.lock found on Windows runner"
+          }
+        shell: pwsh
+
+      - name: Show lockfile summary (for review)
+        run: |
+          echo "---- ls -l weather-server-python ----"
+          ls -l weather-server-python || true
+          echo "---- head of weather-server-python/uv.lock (if present) ----"
+          if [ -f weather-server-python/uv.lock ]; then
+            sed -n '1,120p' weather-server-python/uv.lock || true
+          fi
+        shell: bash
+
+      - name: Commit and push generated lock (optional)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # stage only the lock file to avoid accidental commits of unrelated files
+          git add weather-server-python/uv.lock || true
+
+          # If no staged changes, exit
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          # C...
+
+</details>
+
+*This pull request was created as a result of the following prompt from Copilot chat.*
+> المهمة:
+> إنشاء Pull Request في المستودع modelcontextprotocol/quickstart-resources لإضافة/تحديث ملف GitHub Actions workflow في المسار .github/workflows/generate-lock.yml. الهدف أن يولّد الـ workflow الملف weather-server-python/uv.lock باستخدام pip-compile من pip-tools مع --generate-hashes، ويطبّق umask 077 قبل التوليد، ويزيل أي ACLs موروثة على الملفات الناتجة، ثم يلتزم التغيير في فرع جديد ويفتح PR للمراجعة.
+> 
+> تفاصيل التنفيذ المطلوبة (خطوات قابلة للتنفيذ تلقائياً):
+> - إنشاؤ فرع جديد: fix/generate-uv-lock-with-pip-compile
+> - الملف الذي سيتم إضافته/تعديله: .github/workflows/generate-lock.yml
+> - محتوى الملف: الملف YAML الكامل المدرج أدناه (انظر قسم 'محتوى الملف' في الأسفل).
+> - رسالة الكوميت: "ci: force pip-compile output to weather-server-python/uv.lock, set umask 077, remove inherited ACLs, and commit changes to a branch"
+> - عنوان PR: "ci: generate weather-server-python/uv.lock with pip-compile and strict umask"
+> - وصف PR (بالنسبة لوصف الطلب): وصف باللغتين العربية والإنجليزية يشرح أن الـ workflow يولّد weather-server-python/uv.lock باستخدام pip-compile --generate-hashes، ويطبّق umask 077 ويزيل ACLs إن وُجدت، ويطلب من المراجعين التحقق من أن uv.lock يحتوي على هاشات sha256 كاملة قبل الدمج. أدرج أمثلة أوامر محلية لإعادة التوليد (umask 077 && pip-compile requirements.in --generate-hashes -o weather-server-python/uv.lock).
+> - أذونات workflow: contents: write و pull-requests: write
+> - بعد الدفع، افتح PR من الفرع الجديد إلى الفرع الافتراضي (main) مع النص أعلاه.
+> 
+> محتوى الملف المطلوب إدراجه في .github/workflows/generate-lock.yml (انسخ المحتوى حرفياً):
+> ```
+> name: Generate lockfile
+> 
+> on:
+>   workflow_dispatch:
+>   push:
+>     branches:
+>       - main
+>       - "release/**"
+>       - "develop"
+> 
+> permissions:
+>   contents: write   # needed if the workflow will commit/push changes
+>   pull-requests: write
+> 
+> jobs:
+>   generate-lock:
+>     name: Generate lockfile with strict umask and disable inheritance
+>     runs-on: ubuntu-latest
+>     steps:
+>       - name: Checkout
+>         uses: actions/checkout@v4
+>         with:
+>           fetch-depth: 0
+> 
+>       - name: Setup Python
+>         uses: actions/setup-python@v4
+>         with:
+>           python-version: "3.11"
+> 
+>       - name: Install pip-tools
+>         run: |
+>           python -m pip install --upgrade pip
+>           pip install pip-tools
+>         shell: bash
+> 
+>       - name: Ensure no inherited ACLs on project dir (remove default ACLs if present)
+>         run: |
+>           if command -v setfacl >/dev/null 2>&1; then
+>             # Remove default ACL entries for current dir to avoid inheritance
+>             setfacl -k . || true
+>             setfacl -b . || true
+>           fi
+>         shell: bash
+> 
+>       - name: Generate weather-server-python/uv.lock with pip-compile and strict umask
+>         run: |
+>           # Ensure files created are owner-only by default (files: 600, dirs: 700)
+>           umask 077
+> 
+>           if [ -f requirements.in ]; then
+>             echo "Found requirements.in — running pip-compile to output weather-server-python/uv.lock"
+>             pip-compile requirements.in --generate-hashes -o weather-server-python/uv.lock
+>           else
+>             echo "requirements.in not found; skipping pip-compile"
+>           fi
+> 
+>           # If uv.lock exists, tighten permissions and remove ACLs if possible
+>           if [ -f weather-server-python/uv.lock ]; then
+>             chmod 600 weather-server-python/uv.lock || true
+>             if command -v setfacl >/dev/null 2>&1; then
+>               setfacl -k weather-server-python/uv.lock || true
+>               setfacl -b weather-server-python/uv.lock || true
+>             fi
+>           fi
+>         shell: bash
+> 
+>       - name: Windows: disable inheritance on uv.lock if present
+>         if: runner.os == 'Windows'
+>         run: |
+>           $file = Join-Path $Env:GITHUB_WORKSPACE 'weather-server-python\uv.lock'
+>           if (Test-Path $file) {
+>             Write-Host "Disabling inheritance on $file"
+>             icacls $file /inheritance:r
+>             icacls $file /grant:r "$($env:USERNAME):(R,W)" /c
+>           } else {
+>             Write-Host "No uv.lock found on Windows runner"
+>           }
+>         shell: pwsh
+> 
+>       - name: Show lockfile summary (for review)
+>         run: |
+>           echo "---- ls -l weather-server-python ----"
+>           ls -l weather-server-python || true
+>           echo "---- head of weather-server-python/uv.lock (if present) ----"
+>           if [ -f weather-server-python/uv.lock ]; then
+>             sed -n '1,120p' weather-server-python/uv.lock || true
+>           fi
+>         shell: bash
+> 
+>       - name: Commit and push generated lock (optional)
+>         run: |
+>           git config user.name "github-actions[bot]"
+>           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+>           # stage only the lock file to avoid accidental commits of unrelated files
+>           git add weather-server-python/uv.lock || true
+> 
+>           # If no staged changes, exit
+>           if git diff --staged --quiet; then
+>             echo "No changes to commit"
+>             exit 0
+>           fi
+> 
+>           # Create a unique branch name to avoid collisions
+>           branch="fix/generate-uv-lock-with-pip-compile-${GITHUB_RUN_ID}"
+>           git checkout -b "$branch"
+>           git commit -m "ci: force pip-compile output to weather-server-python/uv.lock, set umask 077, remove inherited ACLs, and commit changes to a branch"
+>           git push --set-upstream origin "$branch"
+>         env:
+>           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+>         shell: bash
+> 
+>       - name: Create Pull Request (if new branch pushed)
+>         if: success() && github.event_name == 'workflow_dispatch'
+>         uses: peter-evans/create-pull-request@v5
+>         with:
+>           token: ${{ secrets.GITHUB_TOKEN }}
+>           commit-message: "ci: force pip-compile output to weather-server-python/uv.lock, set umask 077, remove inherited ACLs, and commit changes to a branch"
+>           branch: "fix/generate-uv-lock-with-pip-compile-${{ github.run_id }}"
+>           title: "ci: generate weather-server-python/uv.lock with pip-compile and strict umask"
+>           body: |
+>             هذا PR يقوم بتوليد weather-server-python/uv.lock باستخدام pip-compile (--generate-hashes) ويطبق أذونات خاصة بالمالك (umask 077)، كما يحاول إزالة أي ACLs موروثة.
+>             الرجاء المراجعة والتحقق من أن الملف يحتوي على هاشات sha256 صحيحة قبل الدمج.
+> 
+>             ---
+>             This PR regenerates weather-server-python/uv.lock using pip-compile (with --generate-hashes) and forces owner-only permissions (umask 077). It also attempts to remove inherited ACL entries where available.
+> 
+>             Reviewers: verify that the generated uv.lock contains full sha256 hashes for each package before merging.
+> 
+>             Local reproduction:
+>               umask 077
+>               pip-compile requirements.in --generate-hashes -o weather-server-python/uv.lock
+> 
+>             (On CI, this workflow will create a branch named fix/generate-uv-lock-with-pip-compile-<run_id> and open a PR for review.)
+>           labels: automated, ci
+> ```
+> 
+> مهم: لا تُدرج أي هاشات "placeholder" — هذا التغيير فقط يضيف workflow لتوليد القفل الحقيقي في CI أو محلياً. راجع الـ PR ولا تدمج ما لم تتأكد من أن uv.lock يحتوي على هاشات كاملة.
+> 
+> المرجع: الملف السابق الذي اقترحته في المحادثة، والطلب الصريح من المستخدم أن أرفع الملف وأفتح PR نيابةً عنه.
+> 
+> الرجاء تنفيذ التغيير: إنشاء الفرع، إضافة/تعديل الملف بالمحتوى السابق، commit وفتح PR بعنوان ورسالة الوصف أعلاه.
+> 
+
+<!-- START COPILOT CODING AGENT TIPS -->
+---
+
+✨ Let Copilot coding agent [set things up for you](https://github.com/modelcontextprotocol/quickstart-resources/issues/new?title=✨+Set+up+Copilot+instructions&body=Configure%20instructions%20for%20this%20repository%20as%20documented%20in%20%5BBest%20practices%20for%20Copilot%20coding%20agent%20in%20your%20repository%5D%28https://gh.io/copilot-coding-agent-tips%29%2E%0A%0A%3COnboard%20this%20repo%3E&assignees=copilot) — coding agent works faster and does higher quality work when set up for your repo.
